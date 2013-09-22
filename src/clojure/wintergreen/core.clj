@@ -12,7 +12,6 @@
           (recur (conj program statement)))))))
 
 (defn compile-pj-edn [path]
-  (let [program-string (slurp path)
-        program-ast (clojure.edn/read-string program-string)]
-    (to-js program-ast)))
+  (let [program-ast (read-pj-edn path)]
+    (program-to-js program-ast)))
 

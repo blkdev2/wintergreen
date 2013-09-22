@@ -1,6 +1,6 @@
 (ns wintergreen.codegen)
 
-(def indent-level "Current source-code indentation level." (atom 0))
+(def ^:dynamic indent-level "Current source-code indentation level." (atom 0))
 
 (defn indent "Increment current indentation level." []
   (swap! indent-level inc))
@@ -18,7 +18,7 @@
   [s]
   (if (not (empty? s)) (print-indented-line (str s ";"))))
 
-(declare to-js)
+(declare write-js)
 
 (defn write-program-js
   "Top-level driver to write a program tree as JavaScript source
@@ -26,7 +26,7 @@
   [program]
   (binding [indent-level (atom 0)]
     (doseq [statement program]
-      (let [expr (to-js statement)]
+      (let [expr (write-js statement)]
         (if expr
           (println (str expr ";")))))))
 
@@ -46,8 +46,8 @@
   newlines. Other tree nodes will return strings."
   (fn [x] (if (list? x) (first x) 'scalar)))
 
-; Procedure.
-(defmethod write-js 'proc [nodes]
+; Function.
+(defmethod write-js 'function [nodes]
   (let [[_ name args & statements] nodes]
     (print-indented-line (format "var %s = function(%s) {"
                                  name
@@ -57,13 +57,13 @@
     (outdent)
     (print-indented-line "}")))
 
-; Procedure argument.
+; Function argument.
 (defmethod write-js 'arg [nodes] (str (nth nodes 2)))
 
 ; Return statement.
 (defmethod write-js 'return [nodes] (format "return %s" (write-js (second nodes))))
 
-; Procedure call.
+; Function call.
 (defmethod write-js 'call [nodes]
   (let [[_ name & args] nodes]
     (format "%s(%s)" name (apply str (interpose ", " (map write-js args))))))
@@ -86,17 +86,21 @@
 
 ; Variable assignment.
 (defmethod write-js 'assign [nodes]
-  (let [[_ varname value] nodes]
-    (format "%s = %s" varname (write-js value))))
+  (let [[_ var-expr value] nodes]
+    (format "%s = %s" (write-js var-expr) (write-js value))))
 
 ; Binary operation.
 (defmethod write-js 'binop [nodes]
   (let [[_ op a b] nodes]
     (format "(%s %s %s)" (write-js a) op (write-js b))))
 
-; Variable.
-(defmethod write-js
-  'var [nodes] (str (second nodes)))
+; Reference to a JavaScript local variable.
+(defmethod write-js 'local
+  [nodes] (str (second nodes)))
+
+; Reference to an object field.
+(defmethod write-js 'field
+  [nodes] (str (nth nodes 1) "." (nth nodes 2)))
 
 ; Single-value literal. May be a number or string.
 (defmethod write-js 'scalar [s]
