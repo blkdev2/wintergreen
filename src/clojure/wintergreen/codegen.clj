@@ -10,13 +10,6 @@
 (defn apply-js-template [kw value-map]
   (apply-template (js-templates kw) value-map))
 
-(defn block-structured? [node]
-  "Returns true if this is a block-structured node. Block-structured
-   nodes have enclosing curly braces, and don't need semicolons when
-   nested inside other blocks."
-  (let [block-nodes #{'function 'for 'while}]
-    (if (block-nodes (first node)) true false)))
-
 (defn to-js 
   "Converts a program node to JavaScript source code. May return a
   string or nil."
@@ -26,9 +19,22 @@
       (.render code)
       code)))
 
-(defn semicolonize [node]
+(defn block-structured?
+  "Returns true if this is a block-structured node. Block-structured
+   nodes have enclosing curly braces, and don't need semicolons when
+   nested inside other blocks."
+  [node]
+  (let [block-nodes #{'function 'for 'while}]
+    (if (block-nodes (first node)) true false)))
+
+(defn semicolonize
+  "Helper function for use within blocks. Given a sub-node, inspects
+   whether or not the sub-node is itself a block. Calls to-js-st recursively
+   on the sub-node and, for non-block nodes, wraps the result in a statement
+   template to add a semicolon."
+  [node]
   (if (block-structured? node)
-    (to-js node)
+    (to-js-st node)
     (apply-js-template :statement
                        {:expr (to-js-st node)})))
 
@@ -58,6 +64,13 @@
                        {:name name
                         :args (map to-js-st args)})))
 
+; If-statement.
+(defmethod to-js-st 'if [nodes]
+  (let [[_ predicate & statements] nodes]
+    (apply-js-template :if
+                       {:pred (to-js-st predicate)
+                        :statements (map semicolonize statements)})))
+
 ; While-loop.
 (defmethod to-js-st 'while [nodes]
   (let [[_ predicate & statements] nodes]
@@ -69,9 +82,11 @@
 (defmethod to-js-st 'decl [nodes]
   (let [[_ name & value] nodes]
     (if (empty? value)
-      (apply-js-template :decl {:name (to-js-st name)})
-      (apply-js-template :declInit {:name (to-js-st name)
-                                    :value (to-js-st (first value))}))))
+      (apply-js-template :decl
+                         {:name (to-js-st name)})
+      (apply-js-template :declInit
+                         {:name (to-js-st name)
+                          :value (to-js-st (first value))}))))
 
 ; Variable assignment.
 (defmethod to-js-st 'assign [nodes]
@@ -85,7 +100,7 @@
   (let [[_ op a b] nodes]
     (apply-js-template :binop
                        {:left (to-js-st a)
-                        :op op
+                        :op (str op)
                         :right (to-js-st b)})))
 
 ; Reference to a JavaScript local variable.
@@ -96,7 +111,7 @@
 (defmethod to-js-st 'field [nodes]
   (apply-js-template :fieldRef
                      {:obj (to-js-st (nth nodes 1))
-                      :field (to-js-st (nth nodes 2))}))
+                      :field (str (nth nodes 2))}))
 
 ; Single-value literal. May be a number or string.
 (defmethod to-js-st 'scalar [s]

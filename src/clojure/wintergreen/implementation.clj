@@ -16,11 +16,15 @@
 (defn make-dummy-process
   "Create a dummy process just so we can test the runtime"
   []
-  '(function ()
-             (assign (field this cc) (field this fn1))             
-             (assign (field this fn1)
-                     (function ()
-                               (assign (field this cc) (field this fn2))))
-             (assign (field this fn2)
-                     (function ()
-                               (assign (field this cc)) (field this fn1)))))
+  '(decl dummy
+         (function ()
+              (assign (field this cc) (field this fn1))
+              (assign (field this a) 0)
+              (assign (field this fn1)
+                      (function ()
+                                (assign (field this a) (binop + (field this a) 1))
+                                (assign (field this cc) (field this fn2))))
+              (assign (field this fn2)
+                      (function ()
+                                (assign (field this a) (binop + (field this a) 2))
+                                (assign (field this cc) (field this fn1)))))))
