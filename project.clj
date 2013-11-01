@@ -6,4 +6,5 @@
   :source-paths ["src/clojure"]
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.clojure/core.incubator "0.1.3"]
-                 [org.clojure/tools.trace "0.7.6"]])
+                 [org.clojure/tools.trace "0.7.6"]
+                 [org.antlr/ST4 "4.0.7"]])

@@ -1,114 +1,111 @@
-(ns wintergreen.codegen)
+(ns wintergreen.codegen
+  [:use [wintergreen.templating]]
+  [:import [org.stringtemplate.v4 ST]])
 
-(def ^:dynamic indent-level "Current source-code indentation level." (atom 0))
+; Forward decl
+(def to-js-st)
 
-(defn indent "Increment current indentation level." []
-  (swap! indent-level inc))
+(def ^:dynamic js-templates (get-templates "javascript.stg"))
 
-(defn outdent "Decrement current indentation level." []
-  (swap! indent-level #(max 0 (dec %))))
+(defn apply-js-template [kw value-map]
+  (apply-template (js-templates kw) value-map))
 
-(defn print-indented-line
-  "Print a string indented to the level defined in the var indent-level."
-  [s]
-  (println (apply str (concat (repeat @indent-level "  ") s))))
+(defn block-structured? [node]
+  "Returns true if this is a block-structured node. Block-structured
+   nodes have enclosing curly braces, and don't need semicolons when
+   nested inside other blocks."
+  (let [block-nodes #{'function 'for 'while}]
+    (if (block-nodes (first node)) true false)))
 
-(defn print-statement
-  "Print a string indented to current indent-level with trailing semicolon."
-  [s]
-  (if (not (empty? s)) (print-indented-line (str s ";"))))
-
-(declare write-js)
-
-(defn write-program-js
-  "Top-level driver to write a program tree as JavaScript source
-  code. Writes code to *out*."
-  [program]
-  (binding [indent-level (atom 0)]
-    (doseq [statement program]
-      (let [expr (write-js statement)]
-        (if expr
-          (println (str expr ";")))))))
-
-(defn program-to-js
-  "Converts a program tree to JavaScript source code, returned as a string."
-  [program]
-  (binding [*out* (new java.io.StringWriter)]
-    (write-program-js program)
-    (.toString *out*)))
-
-(defmulti write-js 
+(defn to-js 
   "Converts a program node to JavaScript source code. May return a
-  string or nil.
+  string or nil."
+  [nodes]
+  (let [code (to-js-st nodes)]
+    (if (instance? ST code)
+      (.render code)
+      code)))
 
-  In general, statement blocks are responsible for printing their code
-  to *out*, properly separating statements with semicolons and
-  newlines. Other tree nodes will return strings."
+(defn semicolonize [node]
+  (if (block-structured? node)
+    (to-js node)
+    (apply-js-template :statement
+                       {:expr (to-js-st node)})))
+
+(defmulti to-js-st
+  "Multimethod to convert a program node to a StringTemplate object."
   (fn [x] (if (list? x) (first x) 'scalar)))
 
 ; Function.
-(defmethod write-js 'function [nodes]
-  (let [[_ name args & statements] nodes]
-    (print-indented-line (format "var %s = function(%s) {"
-                                 name
-                                 (apply str (interpose ", " (map write-js args)))))
-    (indent)
-    (dorun (map (comp print-statement write-js) statements))
-    (outdent)
-    (print-indented-line "}")))
+(defmethod to-js-st 'function [nodes]
+  (let [[_ args & statements] nodes]
+    (apply-js-template :function
+                       {:args (map to-js-st args)
+                        :statements (map semicolonize statements)})))
 
 ; Function argument.
-(defmethod write-js 'arg [nodes] (str (nth nodes 2)))
+(defmethod to-js-st 'arg [nodes] (str (nth nodes 2)))
 
 ; Return statement.
-(defmethod write-js 'return [nodes] (format "return %s" (write-js (second nodes))))
+(defmethod to-js-st 'return [nodes]
+  (apply-js-template :return
+                     {:value (to-js-st (second nodes))}))
 
 ; Function call.
-(defmethod write-js 'call [nodes]
+(defmethod to-js-st 'call [nodes]
   (let [[_ name & args] nodes]
-    (format "%s(%s)" name (apply str (interpose ", " (map write-js args))))))
+    (apply-js-template :functionCall
+                       {:name name
+                        :args (map to-js-st args)})))
 
 ; While-loop.
-(defmethod write-js 'while [nodes]
+(defmethod to-js-st 'while [nodes]
   (let [[_ predicate & statements] nodes]
-    (print-indented-line (format "while (%s) {" (write-js predicate)))
-    (indent)
-    (dorun (map (comp print-statement write-js) statements))
-    (outdent)
-    (print-indented-line "}")))
+    (apply-js-template :while
+                       {:pred (to-js-st predicate)
+                        :statements (map semicolonize statements)})))
 
 ; Variable declaration.
-(defmethod write-js 'decl [nodes]
-  (let [[_ type name & value] nodes]
+(defmethod to-js-st 'decl [nodes]
+  (let [[_ name & value] nodes]
     (if (empty? value)
-      (format "var %s" name)
-      (format "var %s = %s" name (write-js (first value))))))
+      (apply-js-template :decl {:name (to-js-st name)})
+      (apply-js-template :declInit {:name (to-js-st name)
+                                    :value (to-js-st (first value))}))))
 
 ; Variable assignment.
-(defmethod write-js 'assign [nodes]
+(defmethod to-js-st 'assign [nodes]
   (let [[_ var-expr value] nodes]
-    (format "%s = %s" (write-js var-expr) (write-js value))))
+    (apply-js-template :assignment
+                       {:var (to-js-st var-expr)
+                        :value (to-js-st value)})))
 
 ; Binary operation.
-(defmethod write-js 'binop [nodes]
+(defmethod to-js-st 'binop [nodes]
   (let [[_ op a b] nodes]
-    (format "(%s %s %s)" (write-js a) op (write-js b))))
+    (apply-js-template :binop
+                       {:left (to-js-st a)
+                        :op op
+                        :right (to-js-st b)})))
 
 ; Reference to a JavaScript local variable.
-(defmethod write-js 'local
-  [nodes] (str (second nodes)))
+(defmethod to-js-st 'local [nodes]
+  (str (second nodes)))
 
 ; Reference to an object field.
-(defmethod write-js 'field
-  [nodes] (str (nth nodes 1) "." (nth nodes 2)))
+(defmethod to-js-st 'field [nodes]
+  (apply-js-template :fieldRef
+                     {:obj (to-js-st (nth nodes 1))
+                      :field (to-js-st (nth nodes 2))}))
 
 ; Single-value literal. May be a number or string.
-(defmethod write-js 'scalar [s]
+(defmethod to-js-st 'scalar [s]
   (if (string? s)
-    (str "\"" s "\"") 
+    (str "\"" s "\"")
     (str s)))
 
 ; Built-in function to provide a test result value to the testing framework.
-(defmethod write-js 'putTestValue [nodes]
+(defmethod to-js-st 'putTestValue [nodes]
   (let [[_ name value] nodes]
-    (format "testValues.put(%s, %s)" (write-js name) (write-js value))))
+    (format "testValues.put(%s, %s)" (to-js-st name) (to-js-st value))))
+

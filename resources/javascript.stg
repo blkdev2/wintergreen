@@ -1,0 +1,39 @@
+group javascript;
+
+statement(expr) ::= "<expr>;"
+
+function(args, statements) ::= <<
+function(<args; separator=", ">) {
+  <statements; separator="\n">
+}>>
+
+if(pred, statements) ::= <<
+if(<pred>) {
+  <statements; separator=";\n">
+}>>
+
+while(pred, statements) ::= <<
+while(<pred>) {
+  <statements; separator=";\n">
+}>>
+
+for(init, pred, inc, statements) ::= <<
+for(<init>; <pred>; <inc>) {
+  <statements; separator=";\n">
+}>>
+
+functionCall(function, args) ::= <<<function>(<args; separator=", ">)>>
+
+assignment(var, value) ::= "<var> = <value>"
+
+binop(op, left, right) ::= "(<left> <op> <right>)"
+
+return(value) ::= "return <value>"
+
+decl(name) ::= "var <name>"
+
+declInit(name, value) ::= "var <name> = <value>"
+
+fieldRef(obj, field) ::= "<obj>.<field>"
+
+methodCall(obj, method, args) ::= <<<obj>.<method>(<args; separator=", ">)>>

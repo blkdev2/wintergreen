@@ -16,9 +16,11 @@
 (defn make-dummy-process
   "Create a dummy process just so we can test the runtime"
   []
-  '(function (local "DummyProcess") ()
-             (assign (field "this" "cc") (field "this" "fn1"))             
-             (function (field "this" "fn1") ()
-                       (assign (field "this" "cc") (field "this" "fn2")))
-             (function (field "this" "fn2") ()
-                       (assign (field "this" "cc")) (field "this" "fn1"))))
+  '(function ()
+             (assign (field this cc) (field this fn1))             
+             (assign (field this fn1)
+                     (function ()
+                               (assign (field this cc) (field this fn2))))
+             (assign (field this fn2)
+                     (function ()
+                               (assign (field this cc)) (field this fn1)))))
