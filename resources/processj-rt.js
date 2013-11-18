@@ -30,17 +30,33 @@ __RT = function() {
     function Process(name) {
 	this.name = name;
 	this.commData = null;
+	this.completionBarrier = null;
+	// Register process
 	processes[name] = this;
     }
     
     Process.prototype.start = function() {
 	schedule(this);
     }
-
+    
+    Process.prototype.finish = function() {
+	// Unregister process
+	delete processes[this.name];
+	// Synchronize on completion barrier
+	if (this.completionBarrier !== null) {
+	    this.completionBarrier.sync(this);
+	}
+    }
+    
     Process.prototype.toString = function() {
 	return this.name;
     }
-
+    
+    Process.prototype.enrollOnCompletionBarrier = function(cb) {
+	cb.enroll(this);
+	this.completionBarrier = cb;
+    }
+    
     Process.prototype.instanceCounter = 0;
     
     //////
@@ -135,6 +151,57 @@ __RT = function() {
     }
     
     //////
+    // Completion barrier
+    /////
+    function CompletionBarrier(resumeProc) {
+	this.nEnrolled = 0;
+	this.nCompleted = 0;
+	this.resumeProc = resumeProc;
+	this.enrolledProcs = {};
+    }
+    
+    CompletionBarrier.prototype.enroll = function(p) {
+	this.nEnrolled++;
+	this.enrolledProcs[p.name] = true;
+    }
+    
+    CompletionBarrier.prototype.sync = function(p) {
+	if (!(p in this.enrolledProcs)) {
+	    return;
+	}
+	
+	this.nCompleted++;
+	
+	if (this.nEnrolled == this.nCompleted && resumeProc !== null) {
+	    schedule(resumeProc);
+	}
+    }
+    
+    //////
+    // Functions
+    //////
+
+    // runInParallel
+    // First argument should be a process to resume after finishing the PAR.
+    // The rest of the arguments 
+    function runInParallel(resumeProc, processes) {	
+	var cb = new CompletionBarrier(resumeProc);
+	
+	// For each process in the argument list,
+	// set the completion barrier.
+	for (var i = 0; i < processes.length; i++) {
+	    var p = processes[i];
+	    p.enrollOnCompletionBarrier(cb);
+	}
+	// Start the processes.
+	for (var i = 0; i < processes.length; i++) {
+	    var p = processes[i];
+	    console.log("PAR: starting " + p.name);
+	    p.start();
+	}
+    }
+    
+    //////
     // Public interface
     //////
     
@@ -143,6 +210,7 @@ __RT = function() {
 	Process : Process,
 	Channel : Channel,
 	Barrier : Barrier,
+	runInParallel : runInParallel,
 	main : main
     };
 }();
@@ -163,22 +231,22 @@ Recv.prototype.constructor = Recv;
 Recv.prototype.instanceCounter = 0;
 
 Recv.prototype.slice0 = function() {
+    this.next = Recv.prototype.slice1;
     b1.enroll(this);
     this.a += 1;
-    this.next = Recv.prototype.slice1;
     c1.read(this);
 }
 
 Recv.prototype.slice1 = function() {
+    this.next = Recv.prototype.slice2;
     this.a = this.commData;
     this.b = this.a * 2;
-    this.next = Recv.prototype.slice2;
     b1.sync(this);
 }
 
 Recv.prototype.slice2 = function() {
+    this.next = Recv.prototype.finish;
     this.c = 555;
-    this.next = null;
 }
 
 //////
@@ -200,7 +268,7 @@ Send.prototype.slice0 = function() {
 }
 
 Send.prototype.slice1 = function() {
-    this.next = null;
+    this.next = Send.prototype.finish;
     b1.sync(this);
 }
 
@@ -210,8 +278,10 @@ s = new Send();
 r = new Recv();
 
 // Schedule processes
-s.start();
-r.start();
+//s.start();
+//r.start();
+
+__RT.runInParallel(null, [s, r]);
 
 __RT.main();
 
