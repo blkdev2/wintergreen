@@ -40,6 +40,7 @@ __RT = function() {
     }
     
     Process.prototype.finish = function() {
+	console.log("--finish() called for process " + this.name);
 	// Unregister process
 	delete processes[this.name];
 	// Synchronize on completion barrier
@@ -170,10 +171,12 @@ __RT = function() {
 	    return;
 	}
 	
+	console.log("CompletionBarrier: process " + p.name + "completed");
+	
 	this.nCompleted++;
 	
-	if (this.nEnrolled == this.nCompleted && resumeProc !== null) {
-	    schedule(resumeProc);
+	if (this.nEnrolled == this.nCompleted && this.resumeProc !== null) {
+	    schedule(this.resumeProc);
 	}
     }
     
@@ -193,6 +196,7 @@ __RT = function() {
 	    var p = processes[i];
 	    p.enrollOnCompletionBarrier(cb);
 	}
+	
 	// Start the processes.
 	for (var i = 0; i < processes.length; i++) {
 	    var p = processes[i];
@@ -245,8 +249,9 @@ Recv.prototype.slice1 = function() {
 }
 
 Recv.prototype.slice2 = function() {
-    this.next = Recv.prototype.finish;
+    this.next = null;
     this.c = 555;
+    this.finish();
 }
 
 //////
@@ -268,24 +273,57 @@ Send.prototype.slice0 = function() {
 }
 
 Send.prototype.slice1 = function() {
-    this.next = Send.prototype.finish;
+    this.next = Send.prototype.slice2;
     b1.sync(this);
+}
+
+Send.prototype.slice2 = function() {
+    this.next = null;
+    this.finish();
 }
 
 //////
 
-s = new Send();
-r = new Recv();
+////// Test process Main, runs Send and Recv in parallel
+var Main = function() {
+    __RT.Process.call(this, "Main$" + (Main.prototype.instanceCounter++));
+    this.next = Main.prototype.slice0;
+}
+Main.prototype = new __RT.Process();
+Main.prototype.constructor = Main;
+Main.prototype.instanceCounter = 0;
+
+Main.prototype.slice0 = function() {
+    this.next = Main.prototype.slice1;
+    this.S = new Send();
+    this.R = new Recv();
+    __RT.runInParallel(this, [this.S, this.R]);
+}
+
+Main.prototype.slice1 = function() {
+    this.next = null;
+    console.log("Main: PAR returned.");
+    this.finish();
+}
+
+//////
+
+
+//s = new Send();
+//r = new Recv();
 
 // Schedule processes
 //s.start();
 //r.start();
 
-__RT.runInParallel(null, [s, r]);
+//__RT.runInParallel(null, [s, r]);
+
+M = new Main();
+M.start()
 
 __RT.main();
 
-console.log(r.a);
-console.log(r.b);
+console.log(M.R.a);
+console.log(M.R.b);
 
-console.log(r.c);
+console.log(M.R.c);
