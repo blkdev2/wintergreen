@@ -14,7 +14,7 @@ __RT = function() {
     var main = function() {
 	while (runQueue.length !== 0) {
 	    p = runQueue.pop();
-	    if (p.nextSlice !== null)
+	    if (p.nextSlice !== -1)
 	    {
 		p.slices[p.nextSlice]();
 	    }
