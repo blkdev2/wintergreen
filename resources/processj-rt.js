@@ -14,9 +14,9 @@ __RT = function() {
     var main = function() {
 	while (runQueue.length !== 0) {
 	    p = runQueue.pop();
-	    if (p.next !== null)
+	    if (p.nextSlice !== null)
 	    {
-		p.next();
+		p.slices[p.nextSlice]();
 	    }
 	}
     }
@@ -31,6 +31,7 @@ __RT = function() {
 	this.name = name;
 	this.commData = null;
 	this.completionBarrier = null;
+	this.nextSlice = 0;
 	// Register process
 	processes[name] = this;
     }
@@ -47,6 +48,7 @@ __RT = function() {
 	if (this.completionBarrier !== null) {
 	    this.completionBarrier.sync(this);
 	}
+	this.nextSlice = -1;
     }
     
     Process.prototype.toString = function() {
@@ -58,7 +60,16 @@ __RT = function() {
 	this.completionBarrier = cb;
     }
     
-    Process.prototype.instanceCounter = 0;
+    function defineProcess(processName, createProcSlicesWithNewContext) {
+	function P() {
+	    Process.call(this, processName + "$" + (P.prototype.instanceCounter++));
+	    this.slices = createProcSlicesWithNewContext(this);
+	}
+	P.prototype = new Process();
+	P.prototype.constructor = P;
+	P.prototype.instanceCounter = 0;
+	return P;
+    }
     
     //////
     // Channel
@@ -211,7 +222,7 @@ __RT = function() {
     
     return {
 	helloWorld : function() { console.log("Hello, world."); },
-	Process : Process,
+	defineProcess : defineProcess,
 	Channel : Channel,
 	Barrier : Barrier,
 	runInParallel : runInParallel,
@@ -223,107 +234,71 @@ var c1 = new __RT.Channel();
 var b1 = new __RT.Barrier();
 
 ////// Test process Recv, receives a value on c1
-var Recv = function() {
-    __RT.Process.call(this, "Recv$" + (Recv.prototype.instanceCounter++));
-    this.a = 0;
-    this.b = 0;
-    this.c = 0;
-    this.next = Recv.prototype.slice0;
-}
-Recv.prototype = new __RT.Process();
-Recv.prototype.constructor = Recv;
-Recv.prototype.instanceCounter = 0;
-
-Recv.prototype.slice0 = function() {
-    this.next = Recv.prototype.slice1;
-    b1.enroll(this);
-    this.a += 1;
-    c1.read(this);
-}
-
-Recv.prototype.slice1 = function() {
-    this.next = Recv.prototype.slice2;
-    this.a = this.commData;
-    this.b = this.a * 2;
-    b1.sync(this);
-}
-
-Recv.prototype.slice2 = function() {
-    this.next = null;
-    this.c = 555;
-    this.finish();
-}
-
+var Recv = __RT.defineProcess("Recv", function(self) {
+    var a = 0;
+    var b = 0;
+    return [
+	function() {
+	    b1.enroll(self);
+	    a += 1;
+	    c1.read(self);
+	    self.nextSlice = 1;
+	},
+	function() {
+	    a = self.commData;
+	    b = a * 2;
+	    b1.sync(self);
+	    self.nextSlice = 2;
+	},
+	function() {
+	    console.log(a);
+	    console.log(b);
+	    self.finish();
+	}
+    ];
+});
 //////
 
 ////// Test process Send, sends a value on c1
-var Send = function() {
-    __RT.Process.call(this, "Send$" + (Send.prototype.instanceCounter++));
-    this.next = Send.prototype.slice0;
-}
-Send.prototype = new __RT.Process();
-Send.prototype.constructor = Send;
-Send.prototype.instanceCounter = 0;
-
-Send.prototype.slice0 = function() {
-    b1.enroll(this);
-    this.commData = 999;
-    this.next = Send.prototype.slice1;
-    c1.write(this);
-}
-
-Send.prototype.slice1 = function() {
-    this.next = Send.prototype.slice2;
-    b1.sync(this);
-}
-
-Send.prototype.slice2 = function() {
-    this.next = null;
-    this.finish();
-}
-
+var Send = __RT.defineProcess("Send", function(self) {
+    return [
+	function() {
+	    b1.enroll(self);
+	    self.commData = 999;
+	    c1.write(self);
+	    self.nextSlice = 1;
+	},
+	function() {
+	    b1.sync(self);
+	    self.nextSlice = 2;
+	},
+	function() {
+	    self.finish();
+	}
+    ]
+});
 //////
 
 ////// Test process Main, runs Send and Recv in parallel
-var Main = function() {
-    __RT.Process.call(this, "Main$" + (Main.prototype.instanceCounter++));
-    this.next = Main.prototype.slice0;
-}
-Main.prototype = new __RT.Process();
-Main.prototype.constructor = Main;
-Main.prototype.instanceCounter = 0;
-
-Main.prototype.slice0 = function() {
-    this.next = Main.prototype.slice1;
-    this.S = new Send();
-    this.R = new Recv();
-    __RT.runInParallel(this, [this.S, this.R]);
-}
-
-Main.prototype.slice1 = function() {
-    this.next = null;
-    console.log("Main: PAR returned.");
-    this.finish();
-}
-
+var Main = __RT.defineProcess("Main", function(self) {
+    var S = null;
+    var R = null;
+    return [
+	function() {
+	    S = new Send();
+	    R = new Recv();
+	    __RT.runInParallel(self, [S, R]);
+	    self.nextSlice = 1;
+	},
+	function() {
+	    console.log("Main: PAR returned.");
+	    self.finish();
+	}
+    ];
+});
 //////
-
-
-//s = new Send();
-//r = new Recv();
-
-// Schedule processes
-//s.start();
-//r.start();
-
-//__RT.runInParallel(null, [s, r]);
 
 M = new Main();
 M.start()
 
 __RT.main();
-
-console.log(M.R.a);
-console.log(M.R.b);
-
-console.log(M.R.c);
