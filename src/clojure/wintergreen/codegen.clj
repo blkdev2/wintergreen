@@ -40,7 +40,7 @@
 
 (defmulti to-js-st
   "Multimethod to convert a program node to a StringTemplate object."
-  (fn [x] (if (list? x) (first x) 'scalar)))
+  (fn [x] (if (seq? x) (first x) 'scalar)))
 
 ; Function.
 (defmethod to-js-st 'function [nodes]
@@ -61,7 +61,15 @@
 (defmethod to-js-st 'call [nodes]
   (let [[_ name & args] nodes]
     (apply-js-template :functionCall
-                       {:name name
+                       {:function name
+                        :args (map to-js-st args)})))
+
+; Method call.
+(defmethod to-js-st 'mcall [nodes]
+  (let [[_ object method & args] nodes]
+    (apply-js-template :methodCall
+                       {:object object
+                        :method method
                         :args (map to-js-st args)})))
 
 ; If-statement.
@@ -112,6 +120,13 @@
   (apply-js-template :fieldRef
                      {:obj (to-js-st (nth nodes 1))
                       :field (str (nth nodes 2))}))
+
+
+(defmethod to-js-st 'array [items]
+  (let [vertical (some (fn [it] (== (first it) 'function)) items)]
+    (apply-js-template :arrayLiteral
+                       {:values (map to-js-st items)
+                        :verticalLayoutHint (if vertical true false)})))
 
 ; Single-value literal. May be a number or string.
 (defmethod to-js-st 'scalar [s]

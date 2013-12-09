@@ -28,3 +28,12 @@
                       (function ()
                                 (assign (field this a) (binop + (field this a) 2))
                                 (assign (field this cc) (field this fn1)))))))
+;; (defn make-process [name slices]
+;;   (apply list
+;;          `(~'decl ~name (~'mcall ~'__RT ~'defineProcess
+;;                                  ~(str name)
+;;                                  (~'function (~'self)
+;;                                              (~'decl ~'S ~'null)
+;;                                         ;(~'return (~'array (~'function () (~'return 0))))
+;;                                              )))))
+

@@ -24,6 +24,8 @@ for(<init>; <pred>; <inc>) {
 
 functionCall(function, args) ::= <<<function>(<args; separator=", ">)>>
 
+methodCall(object, method, args) ::= <<<object>.<method>(<args; separator=", ">)>>
+
 assignment(var, value) ::= "<var> = <value>"
 
 binop(op, left, right) ::= "(<left> <op> <right>)"
@@ -37,3 +39,11 @@ declInit(name, value) ::= "var <name> = <value>"
 fieldRef(obj, field) ::= "<obj>.<field>"
 
 methodCall(obj, method, args) ::= <<<obj>.<method>(<args; separator=", ">)>>
+
+arrayLiteral(values, verticalLayoutHint=false) ::= <<
+<if(!verticalLayoutHint)>[<values; separator=", ">]
+<else>[
+  <values; separator=",\n">
+]
+<endif>
+>>
