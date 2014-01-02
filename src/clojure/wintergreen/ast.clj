@@ -25,15 +25,15 @@
 ; (mainly assigning positional arguments to appropriate keys)
 
 (defmacro defsyntax
-  "Macro to aid in defining methods for expressions. The given
-   tag keyword is used as the dispatch value and automatically
-   placed in the output map. Args are unpacked from the remainder
-   of the expression, excluding the tag."
+  "Macro to aid in defining methods for expressions. The given tag
+   keyword is used as the first-symbol dispatch value and
+   automatically placed in the output map. Args are unpacked from the
+   remainder of the expression after the tag."
   [tag args out-map]
   (let [expr (gensym "expr")]
-   `(defmethod expr-to-map ~tag [~expr]
-      (let [~(vec (concat ['_] args)) ~expr]
-        ~(assoc out-map :tag tag)))))
+    `(defmethod expr-to-map ~tag [~expr]
+       (let [~(vec (concat ['_] args)) ~expr]
+         ~(assoc out-map :tag tag)))))
 
 (defmulti sexpr-to-ast first)
 
@@ -48,7 +48,7 @@
 
 (defsyntax :while [condition & statements]
   {:condition (sexpr-to-ast condition)
-   :statements (sexprs-to-ast statements)})
+   :body {:tag :seq-block :statements (sexprs-to-ast statements)}})
 
 (defsyntax :var-decl [name value]
   {:name name
@@ -83,7 +83,7 @@
 
 (defmulti tree-children :tag)
 (defmethod tree-children :var-decl [node] [(:value node)])
-(defmethod tree-children :while [node] (concat [(:condition node)] (:statements node)))
+(defmethod tree-children :while [node] [(:condition node) (:body node)])
 (defmethod tree-children :assign [node] ((juxt :variable :value) node))
 (defmethod tree-children :function-call [node] (:args node))
 (defmethod tree-children :par-block [node] (:statements node))

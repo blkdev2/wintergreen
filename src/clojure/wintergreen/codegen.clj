@@ -40,102 +40,94 @@
 
 (defmulti to-js-st
   "Multimethod to convert a program node to a StringTemplate object."
-  (fn [x] (if (seq? x) (first x) 'scalar)))
+  (fn [x] (if (map? x) (:tag x) :scalar)))
 
 ; Function.
-(defmethod to-js-st 'function [nodes]
-  (let [[_ args & statements] nodes]
-    (apply-js-template :function
-                       {:args (map to-js-st args)
-                        :statements (map semicolonize statements)})))
+(defmethod to-js-st :function [node]
+  (apply-js-template :function
+                     {:args (map to-js-st (:args node))
+                      :statements (map semicolonize (:statements node))}))
 
 ; Function argument.
-(defmethod to-js-st 'arg [nodes] (str (nth nodes 2)))
+(defmethod to-js-st :arg [node] (str (:name node)))
 
 ; Return statement.
-(defmethod to-js-st 'return [nodes]
+(defmethod to-js-st :return [node]
   (apply-js-template :return
-                     {:value (to-js-st (second nodes))}))
+                     {:value (to-js-st (:value node))}))
 
 ; Function call.
-(defmethod to-js-st 'call [nodes]
-  (let [[_ name & args] nodes]
-    (apply-js-template :functionCall
-                       {:function name
-                        :args (map to-js-st args)})))
+(defmethod to-js-st :function-call [node]
+  (apply-js-template :functionCall
+                     {:function (:name node)
+                      :args (map to-js-st (:args node))}))
 
 ; Method call.
-(defmethod to-js-st 'mcall [nodes]
-  (let [[_ object method & args] nodes]
-    (apply-js-template :methodCall
-                       {:object object
-                        :method method
-                        :args (map to-js-st args)})))
+(defmethod to-js-st :method-call [node]
+  (apply-js-template :methodCall
+                     {:object (:object node)
+                      :method (:method node)
+                      :args (map to-js-st (:args node))}))
 
 ; If-statement.
-(defmethod to-js-st 'if [nodes]
-  (let [[_ predicate & statements] nodes]
-    (apply-js-template :if
-                       {:pred (to-js-st predicate)
-                        :statements (map semicolonize statements)})))
+(defmethod to-js-st :if [node]
+  (apply-js-template :if
+                     {:pred (to-js-st (:predicate node))
+                      :statements (map semicolonize (:statements (:block node)))}))
 
 ; While-loop.
-(defmethod to-js-st 'while [nodes]
-  (let [[_ predicate & statements] nodes]
-    (apply-js-template :while
-                       {:pred (to-js-st predicate)
-                        :statements (map semicolonize statements)})))
+(defmethod to-js-st :while [node]
+  (apply-js-template :while
+                     {:pred (to-js-st (:predicate node))
+                      :statements (map semicolonize (:statements (:block node)))}))
 
 ; Variable declaration.
-(defmethod to-js-st 'decl [nodes]
-  (let [[_ name & value] nodes]
-    (if (empty? value)
-      (apply-js-template :decl
-                         {:name (to-js-st name)})
-      (apply-js-template :declInit
-                         {:name (to-js-st name)
-                          :value (to-js-st (first value))}))))
+(defmethod to-js-st :decl [node]
+  (if (contains? node :value)
+    (apply-js-template :declInit
+                       {:name (to-js-st (:name node))
+                        :value (to-js-st (:value node))})
+    (apply-js-template :decl
+                       {:name (to-js-st (:name node))})))
 
 ; Variable assignment.
-(defmethod to-js-st 'assign [nodes]
-  (let [[_ var-expr value] nodes]
-    (apply-js-template :assignment
-                       {:var (to-js-st var-expr)
-                        :value (to-js-st value)})))
+(defmethod to-js-st :assign [node]
+  (apply-js-template :assignment
+                     {:var (to-js-st (:variable node))
+                      :value (to-js-st (:value node))}))
 
 ; Binary operation.
-(defmethod to-js-st 'binop [nodes]
-  (let [[_ op a b] nodes]
-    (apply-js-template :binop
-                       {:left (to-js-st a)
-                        :op (str op)
-                        :right (to-js-st b)})))
+(defmethod to-js-st :binop [node]
+  (apply-js-template :binop
+                     {:left (to-js-st (:left node))
+                      :op (str (:operator node))
+                      :right (to-js-st (:right node))}))
 
 ; Reference to a JavaScript local variable.
-(defmethod to-js-st 'local [nodes]
-  (str (second nodes)))
+(defmethod to-js-st :local [node]
+  (:name node))
 
 ; Reference to an object field.
-(defmethod to-js-st 'field [nodes]
+(defmethod to-js-st :field [node]
   (apply-js-template :fieldRef
-                     {:obj (to-js-st (nth nodes 1))
-                      :field (str (nth nodes 2))}))
+                     {:obj (to-js-st (:object node))
+                      :field (:field node)}))
 
 
-(defmethod to-js-st 'array [items]
-  (let [vertical (some (fn [it] (== (first it) 'function)) items)]
+(defmethod to-js-st :array [node]
+  (let [items (:items node)
+        vertical (some (fn [it] (== (:tag it) :function)) items)]
     (apply-js-template :arrayLiteral
                        {:values (map to-js-st items)
                         :verticalLayoutHint (if vertical true false)})))
 
 ; Single-value literal. May be a number or string.
-(defmethod to-js-st 'scalar [s]
+(defmethod to-js-st :scalar [s]
   (if (string? s)
     (str "\"" s "\"")
     (str s)))
 
 ; Built-in function to provide a test result value to the testing framework.
-(defmethod to-js-st 'putTestValue [nodes]
-  (let [[_ name value] nodes]
-    (format "testValues.put(%s, %s)" (to-js-st name) (to-js-st value))))
+(defmethod to-js-st :putTestValue [node]
+  (format "testValues.put(%s, %s)" (to-js-st (:name node)) (to-js-st (:value node))))
 
