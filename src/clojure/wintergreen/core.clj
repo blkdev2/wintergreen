@@ -14,4 +14,3 @@
 (defn compile-pj-edn [path]
   (let [program-ast (read-pj-edn path)]
     (program-to-js program-ast)))
-

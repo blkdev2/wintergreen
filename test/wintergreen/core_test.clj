@@ -1,6 +1,6 @@
 (ns wintergreen.core-test
-  (:require [clojure.test :refer :all]
-            [wintergreen.core :refer :all]))
+  (:use clojure.test
+        wintergreen.core))
 
 (deftest a-test
   (testing "FIXME, I fail."
