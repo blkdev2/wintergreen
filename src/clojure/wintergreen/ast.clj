@@ -31,7 +31,7 @@
    remainder of the expression after the tag."
   [tag args out-map]
   (let [expr (gensym "expr")]
-    `(defmethod expr-to-map ~tag [~expr]
+    `(defmethod sexpr-to-ast ~tag [~expr]
        (let [~(vec (concat ['_] args)) ~expr]
          ~(assoc out-map :tag tag)))))
 
@@ -70,7 +70,7 @@
 ;; Demo using S-expression syntax
 
 (def tree3
-  (expr-to-map 
+  (sexpr-to-ast
    `(:par-block (:function-call "print" (:constant "Hello"))
                 (:while (:constant false)
                         (:assign (:local-var "a") (:constant 5))))))
